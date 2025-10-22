@@ -21,7 +21,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(GENERATED_FOLDER, exist_ok=True)
 
 # --- Gemini API Configuration ---
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=AIzaSyAoX7JLGh2G1KqzVRbeR24Jcp0Hhi41ZxQ"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key="
 
 # --- Model Configuration ---
 CLASS_NAMES = ['good', 'poor', 'satisfactory', 'very_poor']
