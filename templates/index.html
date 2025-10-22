@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CivicLens — Road Monitoring</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-9">
+      <!-- Header -->
+      <div class="d-flex align-items-center mb-4">
+        <div class="me-3">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" style="width:56px;height:56px;">
+            <i class="fa-solid fa-road" style="font-size:22px"></i>
+          </div>
+        </div>
+        <div>
+          <h2 class="mb-0 fw-bold">CivicLens</h2>
+          <div class="small-muted">AI-powered road damage classification & reporting System — upload a photo, get a classification, and submit a report.</div>
+        </div>
+        <div class="ms-auto"><button id="donateNowBtn" class="btn btn-outline-success">Donate Now</button></div>
+      </div>        
+
+      <!-- Uploader Card --> 
+      <div class="card p-4 mb-4">
+        <form id="uploadForm">
+          <div class="row g-3">
+            <div class="col-12 col-md-8">
+              <label class="form-label fw-semibold">Upload road photo <span class="required">*</span></label>
+              <input id="imageFile" name="image" type="file" accept="image/*" class="form-control" required>
+              <div class="small-muted mt-1">PNG / JPG / WEBP — take the photo from a safe position.</div>
+            </div>
+            <div class="col-12 col-md-4 d-grid align-items-end">
+              <button id="analyzeBtn" type="submit" class="btn btn-primary btn-lg">Analyze</button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Analysis Results Area -->
+        <div id="analysisArea" class="mt-4" style="display:none;">
+          <hr class="my-4">
+          <div class="row">
+            <div class="col-12 col-md-6"><img id="imagePreview" class="preview-img border" src="" alt="uploaded preview" /></div>
+            <div class="col-12 col-md-6">
+              <h5 class="mt-2">Analysis</h5>
+              <p><strong>Condition:</strong> <span id="conditionText" class="chip bg-light text-dark"></span></p>
+              <p><strong>Confidence:</strong> <span id="confidenceText"></span></p>
+
+              <!-- Universal Location Input -->
+              <div class="mb-3">
+                <label class="form-label">Location Address <span class="required">*</span></label>
+                <input id="locationAddress" type="text" class="form-control" required>
+                <button id="getLocationBtn" class="btn btn-outline-secondary btn-sm mt-2"><i class="fa-solid fa-location-crosshairs me-1"></i> Use my precise GPS</button>
+                <div id="locationStatus" class="small-muted mt-2">Location: <span id="locationText">Not added</span></div>
+              </div>
+              
+              <!-- Universal Share Section -->
+              <div id="shareSection" class="mt-4" style="display:none;">
+                <h6 class="fw-bold">Raise Awareness</h6>
+                <p class="small-muted">Download and share this AI-generated post on social media.</p>
+                <div id="shareableImageContainer" class="mt-3 text-center">
+                   <div id="shareImageSpinner" class="spinner-border text-primary my-5" role="status"><span class="visually-hidden">Loading...</span></div>
+                   <img id="shareableImage" src="" class="img-fluid rounded border" alt="Shareable Post" style="display:none;" />
+                </div>
+                <div class="d-flex gap-2 mt-3">
+                    <a id="downloadShareImageBtn" href="#" class="btn btn-success w-100" download style="display:none;"><i class="fa-solid fa-download me-2"></i>Download</a>
+                    <button id="regenShareBtn" class="btn btn-outline-primary" style="display:none;"><span class="spinner-border spinner-border-sm visually-hidden"></span><i class="fa-solid fa-arrows-rotate"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conditional Report Section -->
+          <div id="reportSection" style="display:none;">
+            <hr class="my-4">
+            <h5 class="mt-2">Submit Official Report</h5>
+             <div class="row g-3">
+                <div class="col-md-6 mb-2">
+                  <label class="form-label">Your Name</label>
+                  <input id="reporterName" type="text" class="form-control" placeholder="Optional">
+                </div>
+                <div class="col-md-6 mb-2">
+                  <label class="form-label">Your email</label>
+                  <input id="reporterEmail" type="email" class="form-control" placeholder="Optional — for follow-up">
+                </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Report description</label>
+              <div class="d-flex gap-2 mb-2">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="descMode" id="descManual" value="manual" checked>
+                  <label class="form-check-label small-muted" for="descManual">I will type</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="descMode" id="descGemini" value="gemini">
+                  <label class="form-check-label small-muted" for="descGemini">Let Gemini write it</label>
+                </div>
+                <button id="regenDescBtn" class="btn btn-sm btn-outline-primary ms-auto" style="display:none;">
+                  <span id="regenSpinner" class="spinner-border spinner-border-sm me-1 visually-hidden"></span>Generate
+                </button>
+              </div>
+              <textarea id="reportDescription" class="form-control" rows="3" placeholder="Describe the damage..."></textarea>
+            </div>
+            <div class="d-grid gap-2"><button id="submitReportBtn" class="btn btn-success">Submit Report</button></div>
+            <div id="reportResult" class="mt-2 small-muted"></div>
+          </div>
+        </div>
+      </div>
+      <div class="text-center small-muted">All reports are routed to your local authorities (this demo prints reports to the server console).</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals -->
+<div class="modal fade" id="donateModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-3"><div class="modal-header border-0"><h5 class="modal-title">Support Safer Roads</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body text-center"><p class="small-muted mb-4">Your contribution helps fund road repairs and safety initiatives. Please scan the QR code below.</p><img src="/static/images/my-upi-qr.png" alt="Your UPI QR Code" class="mb-3 d-block mx-auto border rounded p-1" style="max-width: 200px;"><p class="fw-semibold">Or pay directly to UPI ID:</p><code>YOUR-UPI-ID@ybl</code><div class="small-muted mt-3">Thank you for your generosity!</div></div></div></div></div>
+<div class="modal fade" id="thankYouModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center overflow-hidden border-0"><div class="modal-body p-4"><img src="/static/images/thank-you-image.png" alt="Thank You" class="mx-auto mb-3" style="width: 80px; height: 80px; object-fit: contain;"><h4 class="fw-bold">Thank You for Your Good Deed!</h4><p class="small-muted">By reporting this issue, you've performed a valuable act of community service. Your report has been submitted.</p><button class="btn btn-primary" data-bs-dismiss="modal">Close</button></div></div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/script.js"></script>
+</body>
+</html>
+
