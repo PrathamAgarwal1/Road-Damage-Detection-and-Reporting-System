@@ -23,31 +23,31 @@
     },
     {
       "source": "/analyze",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/analyze"
+      "destination": "https://roadsight-backend.onrender.com/analyze"
     },
     {
       "source": "/submit-report",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/submit-report"
+      "destination": "https://roadsight-backend.onrender.com/submit-report"
     },
     {
       "source": "/generate-description",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/generate-description"
+      "destination": "https://roadsight-backend.onrender.com/generate-description"
     },
     {
       "source": "/generate-shareable-image",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/generate-shareable-image"
+      "destination": "https://roadsight-backend.onrender.com/generate-shareable-image"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/api/:path*"
+      "destination": "https://roadsight-backend.onrender.com/api/:path*"
     },
     {
       "source": "/static/uploads/:path*",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/static/uploads/:path*"
+      "destination": "https://roadsight-backend.onrender.com/static/uploads/:path*"
     },
     {
       "source": "/static/generated/:path*",
-      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/static/generated/:path*"
+      "destination": "https://roadsight-backend.onrender.com/static/generated/:path*"
     }
   ]
 }
