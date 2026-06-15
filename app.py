@@ -1,4 +1,8 @@
 import os
+import cv2
+import numpy as np
+import base64
+from functools import wraps
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -54,7 +58,7 @@ milestones_col.create_index([('createdAt', ASCENDING)])
 
 # --- Gemini API Configuration ---
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
 # --- Model Configuration ---
 CLASS_NAMES = ['good', 'poor', 'satisfactory', 'very_poor']
@@ -69,9 +73,146 @@ if os.path.exists(MODEL_PATH):
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.to(device)
     model.eval()
-    print("✅ Model loaded successfully")
+    print("✅ ResNet18 model loaded successfully")
 else:
     print(f"❌ MODEL ERROR: The model file '{MODEL_PATH}' was not found.")
+
+# --- YOLOv8 Road-Segmentation Model ---
+yolo_model = None
+try:
+    from ultralytics import YOLO as _YOLO
+    _YOLO_PATH = 'yolov8n-seg.pt'   # auto-downloads on first run (~6 MB)
+    yolo_model = _YOLO(_YOLO_PATH)
+    print("✅ YOLOv8-seg model loaded")
+except Exception as _e:
+    print(f"⚠️  YOLOv8 unavailable ({_e}). Run: pip install ultralytics")
+
+# COCO class IDs that are NOT the road surface (vehicles, people, animals …)
+_NON_ROAD_COCO = {0,1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,
+                  24,25,26,27,28,29,30,31,32,33,56,57,58,59,60}
+
+def is_road_image(image_path):
+    """Use Gemini Vision to definitively check if the image is a road/street."""
+    try:
+        with open(image_path, "rb") as f:
+            img_data = base64.b64encode(f.read()).decode("utf-8")
+        
+        ext = os.path.splitext(image_path)[1].lower()
+        mime = "image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg")
+
+        prompt = (
+            "Examine this image carefully. "
+            "Does it show an ACTUAL outdoor road, street, highway, or pavement meant for vehicles? "
+            "If the image is a test paper, document, text, screenshot, indoor floor, or anything else, you MUST answer NO. "
+            "Answer strictly with only YES or NO."
+        )
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": mime, "data": img_data}}
+                ]
+            }]
+        }
+        res = requests.post(GEMINI_API_URL, headers={'Content-Type': 'application/json'}, data=json.dumps(payload), timeout=10)
+        res.raise_for_status()
+        text = res.json()['candidates'][0]['content']['parts'][0]['text'].strip().upper()
+        print(f"🤖 Gemini Vision Validation -> {text}")
+        return 'YES' in text
+    except Exception as e:
+        if isinstance(e, requests.exceptions.HTTPError) and e.response is not None and e.response.status_code == 400:
+            print(f"❌ Gemini API rejected request (Likely Invalid API Key). Cannot validate road. Error: {e.response.text}")
+            return False
+        print(f"⚠️ Gemini road validation failed (fallback to heuristics): {e}")
+        return True  # Fallback to True only if it's a timeout or network error
+
+def segment_road_region(image_path):
+    """
+    Detect road surface in *image_path* with a robust multi-stage pipeline:
+      0. Gemini Vision validation (rejects test papers, indoor photos, etc.)
+      1. Perspective-aware trapezoid mask  (road ≈ lower portion of scene)
+      2. Asphalt colour filter             (low-saturation, mid-to-dark brightness)
+      3. YOLOv8-seg object subtraction     (erase vehicles / people / sky)
+
+    Returns (viz_filename | None, road_coverage_pct, road_found)
+    """
+    try:
+        if not is_road_image(image_path):
+            print("🚫 Gemini rejected image: Not a road.")
+            return None, 0.0, False
+
+        img = cv2.imread(image_path)
+        if img is None:
+            return None, 0.0, False
+        h, w = img.shape[:2]
+
+        # --- 1. Perspective trapezoid ---
+        top_ratio = 0.28           # road width fraction at the horizon
+        horizon_y = int(h * 0.38)  # row where road perspective vanishes
+        pts = np.array([
+            [int(w * 0.01),                  h - 1],
+            [int(w * 0.99),                  h - 1],
+            [int(w * (0.5 + top_ratio / 2)), horizon_y],
+            [int(w * (0.5 - top_ratio / 2)), horizon_y],
+        ], np.int32)
+        persp = np.zeros((h, w), np.uint8)
+        cv2.fillPoly(persp, [pts], 255)
+
+        # --- 2. Asphalt colour profile (HSV) ---
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        color_mask = cv2.inRange(hsv, (0, 0, 15), (179, 68, 220))
+        road_mask = cv2.bitwise_and(persp, color_mask)
+
+        # Morphological cleanup
+        road_mask = cv2.morphologyEx(road_mask,
+            cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25)))
+        road_mask = cv2.morphologyEx(road_mask,
+            cv2.MORPH_OPEN,  cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10)))
+
+        # --- 3. YOLO object subtraction ---
+        if yolo_model is not None:
+            try:
+                res = yolo_model.predict(image_path, verbose=False)[0]
+                if res.masks is not None:
+                    for cls_id, raw_mask in zip(
+                        res.boxes.cls.cpu().numpy().astype(int),
+                        res.masks.data.cpu().numpy()
+                    ):
+                        if int(cls_id) in _NON_ROAD_COCO:
+                            obj = cv2.resize(raw_mask, (w, h),
+                                             interpolation=cv2.INTER_NEAREST)
+                            road_mask[obj > 0.5] = 0
+            except Exception as ye:
+                print(f"⚠️  YOLO inference skipped: {ye}")
+
+        coverage = float(np.sum(road_mask > 0)) / (h * w) * 100
+        road_found = coverage >= 5.0
+
+        if not road_found:
+            # Graceful fallback: lower 55 % of frame
+            road_mask[:] = 0
+            road_mask[int(h * 0.45):, :] = 255
+            coverage = 0.0   # report 0 so UI can warn the user
+
+        # --- Build visualisation overlay ---
+        viz = img.copy()
+        dimmed = (img * 0.25).astype(np.uint8)
+        non_road = cv2.bitwise_not(road_mask)
+        viz[non_road > 0] = dimmed[non_road > 0]
+        # Green contour around road region
+        contours, _ = cv2.findContours(road_mask, cv2.RETR_EXTERNAL,
+                                        cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(viz, contours, -1, (0, 220, 80), 3)
+
+        base = os.path.splitext(os.path.basename(image_path))[0]
+        viz_name = f"seg_{base}.jpg"
+        cv2.imwrite(os.path.join(UPLOAD_FOLDER, viz_name), viz)
+        return viz_name, round(coverage, 1), road_found
+
+    except Exception as e:
+        print(f"❌ segment_road_region error: {e}")
+        return None, 0.0, False
 
 # --- Image Preprocessing for PyTorch Model ---
 transform = transforms.Compose([
@@ -210,27 +351,46 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    if 'image' not in request.files: return jsonify({'success': False, 'error': 'No image provided'}), 400
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'No image provided'}), 400
     file = request.files['image']
-    if file.filename == '': return jsonify({'success': False, 'error': 'No file selected'}), 400
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
     try:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"road_{timestamp}_{file.filename}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
+
+        # --- Stage 1: Road-region segmentation (YOLOv8 + colour filter) ---
+        viz_name, road_coverage, road_found = segment_road_region(filepath)
+
+        # If it's definitely not a road, reject it immediately
+        if not road_found and viz_name is None:
+            return jsonify({'success': False, 'error': 'Image does not appear to show a road or street. Please upload a valid photo.'}), 400
+
+        # --- Stage 2: Classify condition with ResNet18 (on original image) ---
         condition, confidence = predict_image(filepath)
-        if condition is None: return jsonify({'success': False, 'error': 'Failed to analyze image'}), 500
+        if condition is None:
+            return jsonify({'success': False, 'error': 'Failed to analyze image'}), 500
+
         severity_map = {
-            'good': {'level': 'good', 'icon': 'check-circle'},
-            'satisfactory': {'level': 'moderate', 'icon': 'exclamation-triangle'},
-            'poor': {'level': 'poor', 'icon': 'exclamation-circle'},
-            'very_poor': {'level': 'critical', 'icon': 'times-circle'}
+            'good':        {'level': 'good',     'icon': 'check-circle'},
+            'satisfactory':{'level': 'moderate', 'icon': 'exclamation-triangle'},
+            'poor':        {'level': 'poor',     'icon': 'exclamation-circle'},
+            'very_poor':   {'level': 'critical', 'icon': 'times-circle'},
         }
         severity = severity_map.get(condition, severity_map['satisfactory'])
         return jsonify({
-            'success': True, 'condition': condition.replace('_', ' ').title(),
-            'confidence': round(confidence, 2), 'severity': severity,
-            'image_url': f'/static/uploads/{filename}', 'original_filename': filename
+            'success':           True,
+            'condition':         condition.replace('_', ' ').title(),
+            'confidence':        round(confidence, 2),
+            'severity':          severity,
+            'image_url':         f'/static/uploads/{filename}',
+            'segmented_url':     f'/static/uploads/{viz_name}' if viz_name else None,
+            'road_coverage':     road_coverage,
+            'road_found':        road_found,
+            'original_filename': filename,
         })
     except Exception as e:
         print(f"❌ Analysis error: {e}")
@@ -334,34 +494,34 @@ def submit_report():
 
 # --- Auth Helpers ---
 def require_admin(fn):
+    @wraps(fn)
     def wrapper(*args, **kwargs):
         if not session.get('admin'): return redirect(url_for('admin_login_view'))
         return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 def require_admin_api(fn):
+    @wraps(fn)
     def wrapper(*args, **kwargs):
         if not session.get('admin'):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 401
         return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 def require_user(fn):
+    @wraps(fn)
     def wrapper(*args, **kwargs):
         if not session.get('user'):
             return redirect(url_for('user_login_view'))
         return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 def require_user_api(fn):
+    @wraps(fn)
     def wrapper(*args, **kwargs):
         if not session.get('user'):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 401
         return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 # Seed default admin if not exists (email+password hash via env)
@@ -447,8 +607,10 @@ def admin_login():
     data = request.form or request.json or {}
     email = data.get('email')
     password = data.get('password')
-    user = users_col.find_one({'email': email})
+    # Only allow users with role='admin' to access the admin panel
+    user = users_col.find_one({'email': email, 'role': 'admin'})
     if user and check_password_hash(user.get('passwordHash', ''), password):
+        session.permanent = True
         session['admin'] = {'email': user['email'], 'role': user.get('role', 'admin')}
         return redirect(url_for('admin_dashboard'))
     return render_template('admin_login.html', error='Invalid credentials')
@@ -560,6 +722,30 @@ def api_assign_task(rid):
     milestones_col.insert_one(milestone)
     
     return jsonify({'success': True})
+
+@app.route('/api/admin/stats', methods=['GET'])
+@require_admin_api
+def api_admin_stats():
+    """Return summary statistics for the admin dashboard."""
+    total = reports_col.count_documents({})
+    by_priority = {
+        'High': reports_col.count_documents({'priority': 'High'}),
+        'Medium': reports_col.count_documents({'priority': 'Medium'}),
+        'Low': reports_col.count_documents({'priority': 'Low'}),
+    }
+    by_status = {
+        'New': reports_col.count_documents({'status': 'New'}),
+        'Scheduled': reports_col.count_documents({'status': 'Scheduled'}),
+        'In Progress': reports_col.count_documents({'status': 'In Progress'}),
+        'Resolved': reports_col.count_documents({'status': 'Resolved'}),
+    }
+    by_severity = {
+        'critical': reports_col.count_documents({'severity.level': 'critical'}),
+        'poor': reports_col.count_documents({'severity.level': 'poor'}),
+        'moderate': reports_col.count_documents({'severity.level': 'moderate'}),
+        'good': reports_col.count_documents({'severity.level': 'good'}),
+    }
+    return jsonify({'success': True, 'total': total, 'by_priority': by_priority, 'by_status': by_status, 'by_severity': by_severity})
 
 # --- User APIs ---
 @app.route('/api/user/reports', methods=['GET'])

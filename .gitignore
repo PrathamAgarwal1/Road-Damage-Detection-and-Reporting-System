@@ -7,3 +7,6 @@ static/uploads/*
 !static/uploads/.gitkeep
 static/generated/*
 !static/generated/.gitkeep
+yolov8n-seg.pt
+test_edges.py
+test_gemini.py

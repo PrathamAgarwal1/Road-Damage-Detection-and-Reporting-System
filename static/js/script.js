@@ -25,11 +25,28 @@ const shareableImage = document.getElementById('shareableImage');
 const downloadShareImageBtn = document.getElementById('downloadShareImageBtn');
 const shareImageSpinner = document.getElementById('shareImageSpinner');
 const regenShareBtn = document.getElementById('regenShareBtn');
+const segPreview         = document.getElementById('segPreview');
+const roadCoverageRow    = document.getElementById('roadCoverageRow');
+const roadCoverageBadge  = document.getElementById('roadCoverageBadge');
+const roadWarning        = document.getElementById('roadWarning');
+const tabOriginal        = document.getElementById('tabOriginal');
+const tabSeg             = document.getElementById('tabSeg');
+
+// --- Image tab switcher ---
+function showTab(tab) {
+  const isOrig = (tab === 'original');
+  document.getElementById('imgOriginal').style.display = isOrig ? 'block' : 'none';
+  document.getElementById('imgSeg').style.display      = isOrig ? 'none'  : 'block';
+  tabOriginal.className = isOrig ? 'btn btn-sm btn-primary'          : 'btn btn-sm btn-outline-secondary';
+  tabSeg.className      = isOrig ? 'btn btn-sm btn-outline-secondary' : 'btn btn-sm btn-primary';
+}
+window.showTab = showTab;
 
 // state
 let lastAnalysis = null;
 let userLocation = { latitude: null, longitude: null };
 let thankYouModalInstance = null;
+let currentUser = null;  // populated after session check
 
 // --- Event Listeners ---
 donateNowBtn.addEventListener('click', () => {
@@ -60,7 +77,11 @@ function resetState() {
     // Reset location button
     getLocationBtn.disabled = false;
     setButtonLoading(getLocationBtn, false, '<i class="fa-solid fa-location-crosshairs me-1"></i> Use my precise GPS');
-
+    // Reset segmentation panel
+    roadCoverageRow.style.display = 'none';
+    roadWarning.style.display = 'none';
+    if (segPreview) segPreview.src = '';
+    showTab('original');
     // Hide the results area
     analysisArea.style.display = 'none';
 }
@@ -102,10 +123,30 @@ function displayResults(data) {
     imagePreview.src = data.image_url;
     conditionText.textContent = data.condition;
     confidenceText.textContent = `${data.confidence}%`;
-    
+
+    // --- Road segmentation panel ---
+    roadCoverageRow.style.display = 'block';
+    if (data.segmented_url && segPreview) {
+        segPreview.src = data.segmented_url;
+        tabSeg.style.display = 'inline-block';
+    } else {
+        tabSeg.style.display = 'none';
+    }
+    if (data.road_found) {
+        const pct = data.road_coverage || 0;
+        const cls = pct >= 15 ? 'bg-success' : 'bg-warning text-dark';
+        roadCoverageBadge.className = `badge ${cls} ms-1`;
+        roadCoverageBadge.textContent = `${pct}% of frame`;
+        roadWarning.style.display = 'none';
+    } else {
+        roadCoverageBadge.className = 'badge bg-danger ms-1';
+        roadCoverageBadge.textContent = 'Not detected';
+        roadWarning.style.display = 'block';
+    }
+
     shareSection.style.display = 'block';
     regenShareBtn.style.display = 'block';
-    generateShareableImage(); 
+    generateShareableImage();
 
     const severity = data.severity.level;
     let colorClass = 'bg-light text-dark';
@@ -204,13 +245,15 @@ async function handleSubmit() {
   setButtonLoading(submitReportBtn, true, 'Submitting...');
   try {
     const payload = {
-      name: reporterName.value || 'Anonymous',
-      email: reporterEmail.value || 'anonymous@citizen.local',
+      // Only included for guest users; server ignores these when a session exists
+      name:  currentUser ? currentUser.name  : (reporterName.value  || 'Anonymous'),
+      email: currentUser ? currentUser.email : (reporterEmail.value || 'anonymous@citizen.local'),
       location: { address: locationAddress.value, ...userLocation },
-      condition: lastAnalysis.condition,
-      confidence: lastAnalysis.confidence,
-      image_url: lastAnalysis.image_url,
-      description: reportDescription.value || '',
+      condition:       lastAnalysis.condition,
+      confidence:      lastAnalysis.confidence,
+      image_url:       lastAnalysis.image_url,
+      description:     reportDescription.value || '',
+      damage_category: 'RoadDamage',
     };
     const res = await fetch('/submit-report', {
       method: 'POST',
@@ -222,13 +265,8 @@ async function handleSubmit() {
       if (!thankYouModalInstance) {
         thankYouModalInstance = new bootstrap.Modal(document.getElementById('thankYouModal'));
       }
-      // Check if user is logged in to show dashboard link
-      checkUserSession().then(() => {
-        const dashboardBtn = document.getElementById('viewDashboardBtn');
-        if (document.getElementById('userInfo').style.display !== 'none') {
-          dashboardBtn.style.display = 'inline-block';
-        }
-      });
+      const dashboardBtn = document.getElementById('viewDashboardBtn');
+      dashboardBtn.style.display = currentUser ? 'inline-block' : 'none';
       thankYouModalInstance.show();
       uploadForm.reset();
       analysisArea.style.display = 'none';
@@ -265,14 +303,21 @@ async function checkUserSession() {
     const res = await fetch('/api/user/check');
     const data = await res.json();
     if (data.success && data.user) {
+      currentUser = data.user;
       document.getElementById('loginLink').style.display = 'none';
       document.getElementById('signupLink').style.display = 'none';
       document.getElementById('userInfo').style.display = 'block';
       document.getElementById('userDashboardLink').style.display = 'block';
       document.getElementById('userName').textContent = data.user.name || data.user.email;
+      // Hide redundant reporter fields for logged-in users
+      const reporterRow = reporterName?.closest('.row');
+      if (reporterRow) reporterRow.style.display = 'none';
+    } else {
+      currentUser = null;
     }
   } catch (e) {
-    // User not logged in, keep login/signup visible
+    // User not logged in — keep login/signup visible
+    currentUser = null;
   }
 }
 
