@@ -89,12 +89,15 @@ graph TD
 
 ---
 
-## ☁️ Deployment Guide
+## ☁️ Deployment Guide (Split Architecture: Vercel + Render)
 
-### Why Render instead of Vercel?
-Because RoadSight loads heavyweight deep learning models (`ResNet18` weights and `YOLOv8n-seg.pt` binaries), the deployment package exceeds Vercel’s serverless function limit (50MB). **Render** is the recommended hosting platform as it supports native Python environments with persistent background worker threads.
+To maximize performance, fast load times, and manage package sizes, the application is divided into:
+1. **Frontend (hosted on Vercel)**: Serves static assets, CSS, and HTML pages. Uses server rewrites to securely communicate with the backend without CORS issues.
+2. **Backend (hosted on Render)**: A Python Web Service that runs Gunicorn, holds the ResNet18 and YOLOv8 models, processes images, and communicates with MongoDB Atlas.
 
-### Steps to Deploy on Render
+---
+
+### 1. Deploy the Backend on Render
 
 1. **Prerequisites:**
    - Commit your code to a GitHub repository.
@@ -106,17 +109,42 @@ Because RoadSight loads heavyweight deep learning models (`ResNet18` weights and
    - Connect your GitHub repository.
 
 3. **Configure Service Details:**
+   - **Name:** `road-damage-backend` (or similar)
    - **Language:** `Python`
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `gunicorn app:app`
 
 4. **Add Environment Variables:**
-   Under the **Environment** tab in your Render Web Service settings, add the following variables:
+   Under the **Environment** tab, add:
    - `MONGO_URI` *(your MongoDB Atlas cloud URI)*
-   - `GEMINI_API_KEY` *(your Generative AI Studio API Key)*
-   - `SECRET_KEY` *(any random secure hash)*
+   - `GEMINI_API_KEY` *(your Google AI Studio API Key)*
+   - `SECRET_KEY` *(any random secure string for sessions)*
    - `ADMIN_EMAIL` *(the email you want to use for the Admin panel)*
    - `ADMIN_PASSWORD` *(the password you want to seed)*
 
 5. **Deploy:**
-   Click **Deploy Web Service**. Render will install the CPU versions of PyTorch and Ultralytics and spin up the Gunicorn server.
+   Click **Deploy Web Service**. Render will spin up the Gunicorn server. Note down your backend URL (e.g. `https://road-damage-backend.onrender.com`).
+
+---
+
+### 2. Deploy the Frontend on Vercel
+
+1. **Configure Vercel Rewrite Rules:**
+   - Open [frontend/vercel.json](file:///d:/Programming/Projects/Project/Road-Damage-Detection/frontend/vercel.json) in your project.
+   - Replace `https://YOUR-RENDER-BACKEND-URL.onrender.com` with your actual Render backend URL in all rewrite rules.
+   - Commit and push this change to your GitHub repository.
+
+2. **Create a Vercel Project:**
+   - Go to [Vercel](https://vercel.com) and click **Add New > Project**.
+   - Import your GitHub repository.
+
+3. **Configure Build Settings:**
+   - **Framework Preset:** `Other` (or leave as default)
+   - **Root Directory:** Edit this and select the `frontend` folder.
+   - **Build Command:** Leave empty (no build step is needed).
+   - **Output Directory:** Leave empty (defaults to the root of the selected `frontend` folder).
+
+4. **Deploy:**
+   - Click **Deploy**. Vercel will instantly host your static frontend at a secure `.vercel.app` domain.
+   - Because of the rewrite rules defined in `vercel.json`, all login, upload, and API requests will be securely proxied to your Render backend under the hood, completely avoiding cross-origin (CORS) errors!
+

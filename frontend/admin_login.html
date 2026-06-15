@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoadSight Admin Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div class="w-full max-w-sm bg-white shadow rounded-lg p-6">
+        <h1 class="text-2xl font-semibold text-gray-800 mb-4">Admin Login</h1>
+        <div id="errorAlert" class="bg-red-50 text-red-700 border border-red-200 rounded p-3 text-sm mb-4 hidden"></div>
+        <form id="adminLoginForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Email</label>
+                <input required name="email" type="email" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-400" placeholder="admin@example.com" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <input required name="password" type="password" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-400" placeholder="••••••••" />
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2">Sign in</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errorAlert = document.getElementById('errorAlert');
+            errorAlert.classList.add('hidden');
+            
+            const email = e.target.email.value;
+            const password = e.target.password.value;
+            
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = '/admin';
+                } else {
+                    errorAlert.textContent = data.error || 'Invalid credentials';
+                    errorAlert.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorAlert.textContent = 'An error occurred. Please try again.';
+                errorAlert.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

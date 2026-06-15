@@ -1,0 +1,53 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/user/login",
+      "destination": "/user_login.html"
+    },
+    {
+      "source": "/user/signup",
+      "destination": "/user_signup.html"
+    },
+    {
+      "source": "/user/dashboard",
+      "destination": "/user_dashboard.html"
+    },
+    {
+      "source": "/admin/login",
+      "destination": "/admin_login.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/analyze",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/analyze"
+    },
+    {
+      "source": "/submit-report",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/submit-report"
+    },
+    {
+      "source": "/generate-description",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/generate-description"
+    },
+    {
+      "source": "/generate-shareable-image",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/generate-shareable-image"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/api/:path*"
+    },
+    {
+      "source": "/static/uploads/:path*",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/static/uploads/:path*"
+    },
+    {
+      "source": "/static/generated/:path*",
+      "destination": "https://YOUR-RENDER-BACKEND-URL.onrender.com/static/generated/:path*"
+    }
+  ]
+}

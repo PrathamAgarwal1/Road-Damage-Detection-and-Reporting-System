@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoadSight — My Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    #map { height: 280px; }
+    .report-card { transition: box-shadow 0.2s; }
+    .report-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.09); }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-100">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#667eea,#764ba2)">
+          <i class="fa-solid fa-road text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold" style="background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">RoadSight</h1>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Welcome back, <strong id="user-display-name" class="text-gray-600">User</strong>
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <a href="/" class="text-sm text-gray-500 hover:text-gray-800 transition">
+          <i class="fa-solid fa-plus me-1"></i> New Report
+        </a>
+        <a href="/user/logout" class="inline-flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition">
+          <i class="fa-solid fa-right-from-bracket"></i> Logout
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-5 space-y-5">
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-flag text-blue-500"></i>
+        </div>
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide font-medium">My Reports</div>
+          <div id="total-reports" class="text-2xl font-bold text-gray-800">0</div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-circle-check text-green-500"></i>
+        </div>
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide font-medium">Resolved</div>
+          <div id="resolved-reports" class="text-2xl font-bold text-green-600">0</div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-spinner text-amber-500"></i>
+        </div>
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide font-medium">In Progress</div>
+          <div id="in-progress-reports" class="text-2xl font-bold text-amber-600">0</div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-star text-purple-500"></i>
+        </div>
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide font-medium">New</div>
+          <div id="new-reports" class="text-2xl font-bold text-purple-600">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reports + Map -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      <!-- Report List -->
+      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+          <i class="fa-solid fa-list text-blue-500"></i>
+          <h2 class="font-semibold text-gray-700 text-sm">My Reports</h2>
+        </div>
+        <div id="report-list" class="divide-y divide-gray-50 overflow-y-auto" style="max-height:600px;"></div>
+      </div>
+
+      <!-- Map -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+          <i class="fa-solid fa-map-location-dot text-blue-500"></i>
+          <h2 class="font-semibold text-gray-700 text-sm">My Locations</h2>
+        </div>
+        <div id="map" class="flex-1"></div>
+        <div class="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center gap-4 text-xs text-gray-400">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>New</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>In Progress</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>Resolved</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="/static/js/user_dashboard.js"></script>
+</body>
+</html>

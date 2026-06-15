@@ -25,9 +25,14 @@ import math
 from bson import ObjectId
 from urllib.parse import urlencode
 
+from flask_cors import CORS
+
 # --- Configuration ---
 app = Flask(__name__)
+CORS(app, supports_credentials=True)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY') or secrets.token_hex(16)
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 UPLOAD_FOLDER = 'static/uploads'
 GENERATED_FOLDER = 'static/generated'
@@ -543,6 +548,7 @@ def user_signup_view():
     return render_template('user_signup.html')
 
 @app.route('/user/signup', methods=['POST'])
+@app.route('/api/user/signup', methods=['POST'])
 def user_signup():
     data = request.form or request.json or {}
     email = data.get('email')
@@ -550,10 +556,14 @@ def user_signup():
     name = data.get('name', '')
     
     if not email or not password:
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'Email and password are required'}), 400
         return render_template('user_signup.html', error='Email and password are required')
     
     # Check if user exists
     if users_col.find_one({'email': email}):
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'Email already registered'}), 400
         return render_template('user_signup.html', error='Email already registered')
     
     # Create user
@@ -568,6 +578,8 @@ def user_signup():
     
     session.permanent = True
     session['user'] = {'email': email, 'name': name, 'role': 'user'}
+    if request.is_json:
+        return jsonify({'success': True, 'user': session['user']})
     return redirect(url_for('user_dashboard'))
 
 @app.route('/user/login', methods=['GET'])
@@ -575,6 +587,7 @@ def user_login_view():
     return render_template('user_login.html')
 
 @app.route('/user/login', methods=['POST'])
+@app.route('/api/user/login', methods=['POST'])
 def user_login():
     data = request.form or request.json or {}
     email = data.get('email')
@@ -584,12 +597,20 @@ def user_login():
     if user and check_password_hash(user.get('passwordHash', ''), password):
         session.permanent = True
         session['user'] = {'email': user['email'], 'name': user.get('name', ''), 'role': 'user'}
+        if request.is_json:
+            return jsonify({'success': True, 'user': session['user']})
         return redirect(url_for('user_dashboard'))
+    
+    if request.is_json:
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
     return render_template('user_login.html', error='Invalid credentials')
 
 @app.route('/user/logout')
+@app.route('/api/user/logout')
 def user_logout():
     session.pop('user', None)
+    if request.is_json or request.headers.get('Accept') == 'application/json':
+        return jsonify({'success': True})
     return redirect(url_for('index'))
 
 @app.route('/user/dashboard')
@@ -603,6 +624,7 @@ def admin_login_view():
     return render_template('admin_login.html')
 
 @app.route('/admin/login', methods=['POST'])
+@app.route('/api/admin/login', methods=['POST'])
 def admin_login():
     data = request.form or request.json or {}
     email = data.get('email')
@@ -612,18 +634,34 @@ def admin_login():
     if user and check_password_hash(user.get('passwordHash', ''), password):
         session.permanent = True
         session['admin'] = {'email': user['email'], 'role': user.get('role', 'admin')}
+        if request.is_json:
+            return jsonify({'success': True, 'admin': session['admin']})
         return redirect(url_for('admin_dashboard'))
+    
+    if request.is_json:
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
     return render_template('admin_login.html', error='Invalid credentials')
 
 @app.route('/admin/logout')
+@app.route('/api/admin/logout')
 def admin_logout():
     session.pop('admin', None)
+    if request.is_json or request.headers.get('Accept') == 'application/json':
+        return jsonify({'success': True})
     return redirect(url_for('admin_login_view'))
 
 @app.route('/admin')
 @require_admin
 def admin_dashboard():
     return render_template('admin.html')
+
+@app.route('/api/admin/check', methods=['GET'])
+def api_admin_check():
+    """Check if admin is logged in"""
+    admin = session.get('admin')
+    if admin:
+        return jsonify({'success': True, 'admin': admin})
+    return jsonify({'success': False, 'admin': None})
 
 # --- Admin/Reports APIs ---
 @app.route('/api/reports', methods=['GET'])
