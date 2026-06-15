@@ -44,7 +44,10 @@ os.makedirs(GENERATED_FOLDER, exist_ok=True)
 # --- MongoDB Configuration ---
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/roadsight')
 mongo_client = MongoClient(MONGO_URI)
-db = mongo_client.get_default_database()
+try:
+    db = mongo_client.get_default_database()
+except Exception:
+    db = mongo_client['roadsight']
 reports_col = db.get_collection('reports')
 assignments_col = db.get_collection('assignments')
 users_col = db.get_collection('users')
