@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RoadSight — Live Road Damage Map</title>
+  <meta name="description" content="Every road damage report in your city, its repair status and deterioration forecast.">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    html, body { height: 100%; }
+    body { display: flex; flex-direction: column; }
+    #map { flex: 1; min-height: 420px; }
+    .map-panel { position: absolute; top: 12px; left: 56px; z-index: 1000; max-width: 340px; }
+    .map-panel .card { background: rgba(255,255,255,.96); }
+    .rs-popup img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 6px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    @media (max-width: 576px) { .map-panel { left: 8px; right: 8px; max-width: none; top: 8px; } }
+  </style>
+</head>
+<body>
+  <nav class="navbar rs-navbar">
+    <div class="container-fluid">
+      <a class="navbar-brand rs-brand d-flex align-items-center" href="/"><i class="fa-solid fa-road me-2"></i>RoadSight</a>
+      <a href="/" class="btn btn-primary btn-sm rs-btn"><i class="fa-solid fa-plus me-1"></i>Report damage</a>
+    </div>
+  </nav>
+
+  <div class="position-relative flex-grow-1 d-flex flex-column">
+    <div id="map"></div>
+    <div class="map-panel">
+      <div class="card p-3">
+        <div class="d-flex align-items-center mb-2">
+          <h6 class="fw-bold mb-0"><i class="fa-solid fa-map-location-dot me-1 text-primary"></i>Live road reports</h6>
+          <button class="btn btn-sm btn-link ms-auto p-0" data-bs-toggle="collapse" data-bs-target="#panelBody" aria-label="Toggle panel"><i class="fa-solid fa-sliders"></i></button>
+        </div>
+        <div class="collapse show" id="panelBody">
+          <div class="d-flex gap-3 small mb-2">
+            <div><strong id="cOpen">—</strong> <span class="text-muted">open</span></div>
+            <div><strong id="cProgress">—</strong> <span class="text-muted">in repair</span></div>
+            <div><strong id="cResolved" class="text-success">—</strong> <span class="text-muted">fixed</span></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <select id="fStatus" class="form-select form-select-sm" aria-label="Status filter">
+                <option value="open">Open issues</option>
+                <option value="resolved">Fixed</option>
+                <option value="">All</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <select id="fSeverity" class="form-select form-select-sm" aria-label="Severity filter">
+                <option value="">Any condition</option>
+                <option value="critical">Very Poor</option>
+                <option value="poor">Poor</option>
+                <option value="moderate">Satisfactory</option>
+                <option value="good">Good</option>
+              </select>
+            </div>
+          </div>
+          <button id="locateBtn" class="btn btn-outline-secondary btn-sm w-100 mb-2"><i class="fa-solid fa-location-crosshairs me-1"></i>Show reports near me</button>
+          <div class="small text-muted">
+            <span class="legend-dot" style="background:#ef4444"></span>Very Poor
+            <span class="legend-dot ms-2" style="background:#f97316"></span>Poor
+            <span class="legend-dot ms-2" style="background:#f59e0b"></span>Satisfactory
+            <span class="legend-dot ms-2" style="background:#10b981"></span>Good / fixed
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="/static/js/map.js"></script>
+</body>
+</html>

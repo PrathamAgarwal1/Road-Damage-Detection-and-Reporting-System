@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/map",
+      "destination": "/map.html"
+    },
+    {
       "source": "/user/login",
       "destination": "/user_login.html"
     },
@@ -20,6 +24,14 @@
     {
       "source": "/admin",
       "destination": "/admin.html"
+    },
+    {
+      "source": "/user/logout",
+      "destination": "https://roadsight-backend.onrender.com/user/logout"
+    },
+    {
+      "source": "/admin/logout",
+      "destination": "https://roadsight-backend.onrender.com/admin/logout"
     },
     {
       "source": "/analyze",

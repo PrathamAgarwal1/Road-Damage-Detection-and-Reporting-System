@@ -1,0 +1,64 @@
+{
+  "model": "MobileCLIP2-S2/dfndr2b",
+  "probe_weight_decay": 0.001,
+  "blend_alpha": 0.2,
+  "split_sizes": {
+    "train": 1447,
+    "val": 310,
+    "test": 311
+  },
+  "dropped_conflicting_duplicates": 6,
+  "val_accuracy": 0.9613,
+  "test_accuracy": 0.9678,
+  "test_accuracy_probe_only": 0.9743,
+  "test_confusion": {
+    "classes": [
+      "good",
+      "poor",
+      "satisfactory",
+      "very_poor"
+    ],
+    "rows_true_cols_pred": [
+      [
+        127,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        51,
+        8,
+        0
+      ],
+      [
+        0,
+        2,
+        75,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        48
+      ]
+    ]
+  },
+  "test_recall": {
+    "good": 1.0,
+    "poor": 0.8644,
+    "satisfactory": 0.974,
+    "very_poor": 1.0
+  },
+  "out_of_dataset_accuracy": "6/7",
+  "gate": {
+    "accept_threshold": 0.5,
+    "review_threshold": 0.15,
+    "dataset_roads_accepted": 0.9985,
+    "dataset_roads_rejected": 2,
+    "non_road_images_passed": "0/30",
+    "max_non_road_score": 0.0135,
+    "out_of_dataset_roads_accepted": "7/7"
+  }
+}

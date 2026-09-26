@@ -3,8 +3,18 @@
    ============================================================ */
 
 let map, markersLayer;
+let mapFitted = false;
 
-// ── Colour helpers ─────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function safeUrl(u) {
+  return typeof u === 'string' && u.startsWith('/static/') ? esc(u) : '';
+}
+function healthColor(h) {
+  return h == null ? '#6b7280' : h >= 60 ? '#16a34a' : h >= 35 ? '#d97706' : '#dc2626';
+}
 function statusColor(s) {
   return { 'New':'#3b82f6', 'Scheduled':'#8b5cf6', 'In Progress':'#f59e0b', 'Resolved':'#22c55e' }[s] || '#6b7280';
 }
@@ -78,8 +88,8 @@ async function toggleMilestones(reportId) {
             <div class="flex-1 w-px bg-gray-200 mt-1"></div>
           </div>
           <div class="pb-3 flex-1 min-w-0">
-            <div class="text-xs font-semibold text-gray-700">${m.title}</div>
-            <div class="text-xs text-gray-500 mt-0.5">${m.description || ''}</div>
+            <div class="text-xs font-semibold text-gray-700">${esc(m.title)}</div>
+            <div class="text-xs text-gray-500 mt-0.5">${esc(m.description || '')}</div>
             <div class="text-xs text-gray-400 mt-0.5">${new Date(m.createdAt).toLocaleString('en-IN')}</div>
           </div>
         </div>`).join('')}
@@ -102,12 +112,12 @@ function renderReports(reports) {
     if (lat != null && lng != null) {
       const color = statusColor(r.status);
       const m = L.marker([lat, lng], { icon: markerIcon(color) });
-      m.bindPopup(`<div class="text-sm"><strong>${r.location?.address || 'Unknown'}</strong><br>Status: ${r.status}</div>`);
+      m.bindPopup(`<div class="text-sm"><strong>${esc(r.location?.address || 'Unknown')}</strong><br>Status: ${esc(r.status)}</div>`);
       m.addTo(markersLayer);
       bounds.push([lat, lng]);
     }
   });
-  if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+  if (bounds.length && !mapFitted) { map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 }); mapFitted = true; }
 
   // List
   const list = document.getElementById('report-list');
@@ -128,28 +138,31 @@ function renderReports(reports) {
     const pColor  = priorityColor(r.priority);
     const stClass = statusClass(r.status);
     const svClass = severityClass(r.severity?.level);
+    const rhi     = r.forecast?.roadHealthIndex;
     const date    = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : '—';
 
     const card = document.createElement('div');
     card.className = 'report-card px-4 py-4 border-b border-gray-50 last:border-0';
     card.innerHTML = `
       <div class="flex gap-3">
-        <img src="${r.imageUrl || ''}" class="w-20 h-20 rounded-xl object-cover border border-gray-100 flex-shrink-0"
+        <img src="${safeUrl(r.imageUrl)}" class="w-20 h-20 rounded-xl object-cover border border-gray-100 flex-shrink-0"
              onerror="this.style.display='none'">
         <div class="flex-1 min-w-0">
           <div class="flex items-start justify-between gap-2">
-            <div class="font-semibold text-gray-800 text-sm truncate">${r.location?.address || 'Unknown location'}</div>
-            <span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${stClass}">${r.status}</span>
+            <div class="font-semibold text-gray-800 text-sm truncate">${esc(r.location?.address || 'Unknown location')}</div>
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${stClass}">${esc(r.status)}</span>
           </div>
           <div class="flex flex-wrap items-center gap-2 mt-1">
-            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${svClass}">${r.severity?.level || '—'}</span>
-            <span class="text-xs font-semibold" style="color:${pColor}">${r.priority} Priority</span>
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${svClass}">${esc(r.condition || r.severity?.level || '—')}</span>
+            <span class="text-xs font-semibold" style="color:${pColor}">${esc(r.priority)} Priority</span>
+            ${rhi != null ? `<span class="text-xs font-semibold" style="color:${healthColor(rhi)}" title="Road Health Index">RHI ${rhi}/100</span>` : ''}
             <span class="text-xs text-gray-400"><i class="fa-regular fa-calendar mr-1"></i>${date}</span>
           </div>
-          ${r.description ? `<div class="text-xs text-gray-500 mt-2 line-clamp-2">${r.description}</div>` : ''}
+          ${r.description ? `<div class="text-xs text-gray-500 mt-2 line-clamp-2">${esc(r.description)}</div>` : ''}
+          ${r.forecast?.summary && r.status !== 'Resolved' ? `<div class="text-xs text-amber-700 mt-1"><i class="fa-solid fa-cloud-rain mr-1"></i>${esc(r.forecast.summary)}</div>` : ''}
           <button id="milestone-btn-${r.id}"
             class="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium transition"
-            onclick="window.toggleMilestones('${r.id}')">
+            onclick="window.toggleMilestones('${esc(r.id)}')">
             <i class="fa-solid fa-chevron-down mr-1 text-xs"></i> View Updates
           </button>
           <div id="milestones-${r.id}" class="hidden mt-2 pl-1 border-l-2 border-blue-200"></div>
