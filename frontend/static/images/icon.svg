@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#667eea"/>
+      <stop offset="1" stop-color="#764ba2"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+  <!-- road in perspective -->
+  <path d="M26 12h12l12 42H14z" fill="#fff"/>
+  <!-- dashed centre line -->
+  <path d="M31 16h2v6h-2zM30.6 27h2.8v8h-2.8zM30 40h4v10h-4z" fill="#764ba2"/>
+  <!-- pothole -->
+  <ellipse cx="22" cy="46" rx="5" ry="2.6" fill="#ef4444"/>
+</svg>

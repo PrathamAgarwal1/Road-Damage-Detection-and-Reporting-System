@@ -320,6 +320,16 @@ def public_map():
     return page('map.html')
 
 
+@app.route('/favicon.ico')
+def favicon():
+    return page('favicon.ico')
+
+
+@app.route('/site.webmanifest')
+def web_manifest():
+    return send_from_directory(FRONTEND_DIR, 'site.webmanifest', mimetype='application/manifest+json')
+
+
 @app.route('/static/uploads/<path:filename>')
 def uploaded_file(filename):
     name = secure_filename(os.path.basename(filename))
