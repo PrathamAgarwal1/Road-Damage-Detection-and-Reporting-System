@@ -3,27 +3,27 @@
   "rewrites": [
     {
       "source": "/map",
-      "destination": "/map.html"
+      "destination": "/map"
     },
     {
       "source": "/user/login",
-      "destination": "/user_login.html"
+      "destination": "/user_login"
     },
     {
       "source": "/user/signup",
-      "destination": "/user_signup.html"
+      "destination": "/user_signup"
     },
     {
       "source": "/user/dashboard",
-      "destination": "/user_dashboard.html"
+      "destination": "/user_dashboard"
     },
     {
       "source": "/admin/login",
-      "destination": "/admin_login.html"
+      "destination": "/admin_login"
     },
     {
       "source": "/admin",
-      "destination": "/admin.html"
+      "destination": "/admin"
     },
     {
       "source": "/user/logout",

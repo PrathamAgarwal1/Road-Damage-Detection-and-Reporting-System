@@ -45,7 +45,9 @@ HTTP_HEADERS = {'User-Agent': 'RoadSight/1.0 (road damage reporting system)'}
 
 # --- MongoDB ---
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/roadsight')
-mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
+# connect=False defers DNS/SRV resolution to the first query, so a bad or unreachable MONGO_URI
+# doesn't crash the app at import; /api/health then reports the database as down.
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000, connect=False)
 try:
     db = mongo_client.get_default_database()
 except Exception:
