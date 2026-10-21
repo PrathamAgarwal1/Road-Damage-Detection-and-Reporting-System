@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from bson import ObjectId
 from bson.errors import InvalidId
+from pymongo.errors import PyMongoError
 
 from services import (reports_col, assignments_col, users_col, milestones_col,
                       UPLOAD_FOLDER, GENERATED_FOLDER, BASE_DIR)
@@ -359,6 +360,12 @@ def generated_file(filename):
 @app.errorhandler(413)
 def too_large(_e):
     return jsonify({'success': False, 'error': 'Image is too large (max 15 MB).'}), 413
+
+
+@app.errorhandler(PyMongoError)
+def database_unavailable(e):
+    print(f"❌ Database error on {request.path}: {type(e).__name__}: {str(e)[:300]}")
+    return jsonify({'success': False, 'error': 'The database is temporarily unavailable. Please try again in a minute.'}), 503
 
 
 # --- Analysis ---
