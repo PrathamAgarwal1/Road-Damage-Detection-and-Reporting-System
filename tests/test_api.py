@@ -214,3 +214,21 @@ def test_model_quality_recorded(app_module):
     m = app_module.vision.metrics
     assert m['test_accuracy'] >= 0.95
     assert m['gate']['non_road_images_passed'].startswith('0/')
+
+
+def test_port_opens_before_models_finish_loading():
+    """Regression: the server must answer (health = loading) while the models are still loading."""
+    import subprocess, sys, textwrap
+    code = textwrap.dedent('''
+        import time, app
+        c = app.app.test_client()
+        r = c.get('/api/health')
+        print('EARLY', r.status_code, r.get_json()['model_loading'])
+        app.models_ready(wait=300)
+        print('LATE', c.get('/api/health').get_json()['model'])
+    ''')
+    out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600,
+                         env={**__import__('os').environ}).stdout
+    early = next(l for l in out.splitlines() if l.startswith('EARLY')).split()
+    assert early[1] == '503' and early[2] == 'True', out
+    assert 'LATE True' in out, out

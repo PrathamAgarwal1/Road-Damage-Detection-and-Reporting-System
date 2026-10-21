@@ -47,6 +47,8 @@ def app_module():
     services.reverse_geocode = lambda lat, lon: 'Test Street, Jaipur'
     import app as app_mod
     app_mod.app.config['TESTING'] = True
+    assert app_mod.models_ready(wait=300), 'vision model failed to load'
+    assert app_mod.db_ready.wait(60), 'database setup did not finish'
     yield app_mod
     _client.drop_database(_client.get_default_database().name)
     # remove files this test run created

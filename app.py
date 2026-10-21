@@ -3,10 +3,12 @@ import cv2
 import numpy as np
 import json
 import secrets
+import sys
 import csv
 import io
 import re
 import textwrap
+import threading
 import time
 import uuid
 from functools import wraps
@@ -49,7 +51,6 @@ if _origins:
 
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 
-services.ensure_indexes()
 
 # --- Gemini API Configuration ---
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -78,16 +79,60 @@ def gemini_generate(parts, timeout=15):
 
 
 # --- Vision model: road gate + condition classifier (see vision.py, training/train.py) ---
+# Models load in a background thread so the web server binds its port straight away
+# (importing PyTorch and loading the models can take minutes on a small instance).
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'roadsight_clip.pt')
+ENABLE_YOLO = os.getenv('ENABLE_YOLO_OVERLAY', 'true').lower() == 'true'  # 'false' saves ~150 MB RAM
+MODEL_WAIT_S = 90  # how long a request waits for models that are still loading
 vision = None
-try:
-    from vision import RoadVision
-    vision = RoadVision(MODEL_PATH)
-    _m = vision.metrics
-    print(f"✅ Vision model loaded ({_m.get('model')}, held-out test accuracy {_m.get('test_accuracy', 0):.1%})")
-except Exception as _e:
-    print(f"❌ MODEL ERROR: could not load {MODEL_PATH}: {_e}")
-model_loaded = vision is not None
+yolo_model = None
+_models_ready = threading.Event()
+_loader_lock = threading.Lock()
+_loader_pid = None
+
+
+def _load_models():
+    global vision, yolo_model
+    started = time.monotonic()
+    try:
+        from vision import RoadVision
+        vision = RoadVision(MODEL_PATH)
+        _m = vision.metrics
+        print(f"✅ Vision model loaded ({_m.get('model')}, held-out test accuracy {_m.get('test_accuracy', 0):.1%})")
+    except Exception as e:
+        print(f"❌ MODEL ERROR: could not load {MODEL_PATH}: {e}")
+    if ENABLE_YOLO:
+        try:
+            from ultralytics import YOLO
+            yolo_model = YOLO(os.path.join(BASE_DIR, 'yolov8n-seg.pt'))  # auto-downloads on first run (~6 MB)
+            print("✅ YOLOv8-seg model loaded")
+        except Exception as e:
+            print(f"⚠️  YOLOv8 unavailable ({e}); road overlay uses colour masks only")
+    print(f"⏱️ Models ready in {time.monotonic() - started:.0f}s")
+    _models_ready.set()
+
+
+def start_model_loader():
+    """Start loading once per process (gunicorn --preload forks after import, and threads don't survive a fork)."""
+    global _loader_pid
+    with _loader_lock:
+        if _loader_pid == os.getpid() or (vision is not None and _models_ready.is_set()):
+            return
+        _loader_pid = os.getpid()
+        _models_ready.clear()
+        threading.Thread(target=_load_models, name='model-loader', daemon=True).start()
+
+
+def models_ready(wait=0.0):
+    """True once the vision model is loaded; optionally wait up to `wait` seconds for it."""
+    start_model_loader()
+    if wait:
+        _models_ready.wait(wait)
+    return vision is not None
+
+
+def models_loading():
+    return not _models_ready.is_set()
 
 
 def analyze_image(image_path):
@@ -101,19 +146,11 @@ def analyze_image(image_path):
 
 def predict_image(image_path):
     """(condition_key, confidence %) for a road photo."""
-    result = analyze_image(image_path) if model_loaded else None
+    result = analyze_image(image_path) if models_ready(MODEL_WAIT_S) else None
     return (result['condition'], result['confidence']) if result else (None, None)
 
 
-# --- YOLOv8 segmentation (only for the road-surface visualisation overlay) ---
-yolo_model = None
-try:
-    from ultralytics import YOLO as _YOLO
-    yolo_model = _YOLO(os.path.join(BASE_DIR, 'yolov8n-seg.pt'))  # auto-downloads on first run (~6 MB)
-    print("✅ YOLOv8-seg model loaded")
-except Exception as _e:
-    print(f"⚠️  YOLOv8 unavailable ({_e}). Run: pip install ultralytics")
-
+# --- YOLOv8 segmentation (only for the road-surface visualisation overlay; loaded with the models above) ---
 # COCO class IDs that are NOT the road surface (vehicles, people, animals …)
 _NON_ROAD_COCO = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                   24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 56, 57, 58, 59, 60}
@@ -296,9 +333,11 @@ def health():
         db_ok = True
     except Exception:
         db_ok = False
-    return jsonify({'success': db_ok and model_loaded, 'database': db_ok, 'model': model_loaded,
-                    'yolo': yolo_model is not None, 'gemini': bool(GEMINI_API_KEY),
-                    'email': services.smtp_configured()}), (200 if db_ok and model_loaded else 503)
+    model_ok = models_ready()
+    return jsonify({'success': db_ok and model_ok, 'database': db_ok, 'model': model_ok,
+                    'model_loading': models_loading(), 'yolo': yolo_model is not None,
+                    'gemini': bool(GEMINI_API_KEY), 'email': services.smtp_configured()}), \
+        (200 if db_ok and model_ok else 503)
 
 
 def client_ip():
@@ -333,8 +372,10 @@ def analyze():
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         return jsonify({'success': False, 'error': 'Unsupported file type. Please upload a JPG, PNG or WEBP image.'}), 400
-    if not model_loaded:
-        return jsonify({'success': False, 'error': 'Classification model is not available on the server.'}), 503
+    if not models_ready(MODEL_WAIT_S):
+        msg = ('The AI model is still starting up. Please try again in a minute.' if models_loading()
+               else 'Classification model is not available on the server.')
+        return jsonify({'success': False, 'error': msg}), 503
     limited = too_many('analyze', 15)
     if limited:
         return limited
@@ -573,18 +614,38 @@ def require_user_api(fn):
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@example.com').strip().lower()
 _admin_hash = os.getenv('ADMIN_PASSWORD_HASH') or (
     generate_password_hash(os.getenv('ADMIN_PASSWORD')) if os.getenv('ADMIN_PASSWORD') else None)
-try:
-    if _admin_hash:
-        users_col.update_one({'email': ADMIN_EMAIL},
-                             {'$set': {'passwordHash': _admin_hash, 'role': 'admin'},
-                              '$setOnInsert': {'email': ADMIN_EMAIL, 'createdAt': datetime.utcnow()}}, upsert=True)
-    else:
-        print("⚠️ ADMIN_PASSWORD not set — seeding default admin password 'admin123'. Set it in production!")
-        users_col.update_one({'email': ADMIN_EMAIL}, {'$setOnInsert': {
-            'email': ADMIN_EMAIL, 'passwordHash': generate_password_hash('admin123'),
-            'role': 'admin', 'createdAt': datetime.utcnow()}}, upsert=True)
-except Exception as e:
-    print(f"⚠️ Could not seed admin user: {e}")
+db_ready = threading.Event()
+
+
+def _init_database():
+    """Indexes + admin account. Runs in the background so a slow/unreachable database can't block startup."""
+    services.ensure_indexes()
+    try:
+        if _admin_hash:
+            users_col.update_one({'email': ADMIN_EMAIL},
+                                 {'$set': {'passwordHash': _admin_hash, 'role': 'admin'},
+                                  '$setOnInsert': {'email': ADMIN_EMAIL, 'createdAt': datetime.utcnow()}}, upsert=True)
+        else:
+            print("⚠️ ADMIN_PASSWORD not set — seeding default admin password 'admin123'. Set it in production!")
+            users_col.update_one({'email': ADMIN_EMAIL}, {'$setOnInsert': {
+                'email': ADMIN_EMAIL, 'passwordHash': generate_password_hash('admin123'),
+                'role': 'admin', 'createdAt': datetime.utcnow()}}, upsert=True)
+        print("✅ Database ready")
+    except Exception as e:
+        print(f"⚠️ Could not seed admin user: {e}")
+    db_ready.set()
+
+
+threading.Thread(target=_init_database, name='db-init', daemon=True).start()
+# Under gunicorn the app may be imported in the master before forking (--preload); loading there too
+# would keep a second copy of the model in memory. Workers start loading on their first request instead.
+if not any(m == 'gunicorn' or m.startswith('gunicorn.') for m in sys.modules):
+    start_model_loader()
+
+
+@app.before_request
+def _ensure_background_loading():
+    start_model_loader()  # no-op unless this is a freshly forked worker
 
 
 def _credentials():
